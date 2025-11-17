@@ -1,0 +1,130 @@
+package com.ra.session11.controller;
+
+import com.ra.session11.model.dto.ProductDTO;
+import com.ra.session11.model.entity.Product;
+import com.ra.session11.model.entity.User;
+import com.ra.session11.model.entity.UserLogin;
+import com.ra.session11.service.ProductService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import javax.servlet.http.HttpSession;
+import javax.validation.Valid;
+
+@Controller
+@RequestMapping("/products")
+public class ProductController {
+    @Autowired
+    private ProductService productService;
+
+    @GetMapping
+    public String listProducts(Model model , @RequestParam(name = "searchNameProduct",required = false) String searchNameProduct) {
+        String isLogin = checkLogin();
+        if (isLogin != null) return isLogin;
+
+        model.addAttribute("products", productService.findAll(searchNameProduct));
+        model.addAttribute("search" ,searchNameProduct);
+        return "/product/productList"; // Tên của trang JSP để hiển thị danh sách sản phẩm
+    }
+
+    private static String checkLogin() {
+        User userLogin = UserLogin.user;
+        if (userLogin == null) {
+            return "redirect:/auth/login";
+        }
+        return null;
+    }
+
+    @GetMapping("/add")
+    public String showAddProductForm(Model model) {
+        String isLogin = checkLogin();
+        if (isLogin != null) return isLogin;
+
+        model.addAttribute("product", new ProductDTO());
+        return "/product/addProduct"; // Trả về view addProduct.jsp
+    }
+
+    @PostMapping("/add")
+    public String addProduct(@Valid @ModelAttribute("product") ProductDTO productDTO, BindingResult bindingResult,
+                             RedirectAttributes redirectAttributes, Model model) {
+        String isLogin = checkLogin();
+        if (isLogin != null) return isLogin;
+
+        if (productDTO.getImage() == null || productDTO.getImage().isEmpty()) {
+            bindingResult.rejectValue("image", "error.image.empty", "image is empty");
+        }
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("product", productDTO);
+            return "/product/addProduct";
+        }
+
+        Product product = productService.save(productDTO);
+        if (product != null) {
+            redirectAttributes.addFlashAttribute("message", "Product added successfully");
+            return "redirect:/products";
+        }else {
+            model.addAttribute("message", "Product added failed");
+            model.addAttribute("product", productDTO);
+            return "/product/addProduct";
+        }
+    }
+
+    @GetMapping("/edit/{id}")
+    public String showEditProductForm(@PathVariable Long id, Model model) {
+        String isLogin = checkLogin();
+        if (isLogin != null) return isLogin;
+        // Lấy thông tin sản phẩm theo id
+        Product product = productService.findById(id);
+        ProductDTO productDTO = productService.convertProductToProductDTO(product);
+        model.addAttribute("product", productDTO);
+        model.addAttribute("image", product.getImage());
+        model.addAttribute("id",id);
+        return "/product/editProduct"; // Trả về view editProduct.jsp
+    }
+
+    @PostMapping("/edit/{id}")
+    public String updateProduct(@PathVariable Long id,
+                                @Valid @ModelAttribute("product") ProductDTO productDTO , BindingResult bindingResult,
+                                RedirectAttributes redirectAttributes,Model model ) {
+        // Lấy sản phẩm cũ từ cơ sở dữ liệu
+        Product product = productService.findById(id);
+        if (bindingResult.hasErrors()) {
+            model.addAttribute("product", productDTO);
+            model.addAttribute("image", product.getImage());
+            model.addAttribute("id",id);
+            return "/product/editProduct";
+        }
+
+        Product updatedProduct = productService.update(productDTO,id);
+        if (updatedProduct != null) {
+            redirectAttributes.addFlashAttribute("message", "Product updated successfully");
+            return "redirect:/products";
+        }else {
+            redirectAttributes.addFlashAttribute("message", "Product updated failed");
+            model.addAttribute("product", productDTO);
+            return "/product/editProduct";
+        }
+    }
+
+    @GetMapping("/delete/{id}")
+    public String deleteProduct(@PathVariable Long id, HttpSession session, RedirectAttributes redirectAttributes
+    ) {
+        // Kiểm tra quyền truy cập: chỉ cho phép người dùng đã đăng nhập
+        String isLogin = checkLogin();
+        if (isLogin != null) return isLogin;
+
+        // Xóa sản phẩm khỏi cơ sở dữ liệu
+        boolean rs = productService.deleteById(id);
+        if (rs){
+            redirectAttributes.addFlashAttribute("message", "Xóa sản phẩm thành công!");
+        }else {
+            redirectAttributes.addFlashAttribute("message", "Product deleted failed");
+        }
+
+        return "redirect:/products"; // Chuyển hướng về danh sách sản phẩm
+    }
+}
